@@ -1,6 +1,7 @@
 package documentloaders
 
 import (
+	"bytes"
 	"context"
 	"io"
 	"strings"
@@ -11,7 +12,7 @@ import (
 	"github.com/tmc/langchaingo/textsplitter"
 )
 
-// HTML loads parses and sanitizes html content from an io.Reader.
+// HTML sanitizes HTML markup from an io.Reader and extracts its plain text.
 type HTML struct {
 	r io.Reader
 }
@@ -25,7 +26,11 @@ func NewHTML(r io.Reader) HTML {
 
 // Load reads from the io.Reader and returns a single document with the data.
 func (h HTML) Load(_ context.Context) ([]schema.Document, error) {
-	doc, err := goquery.NewDocumentFromReader(h.r)
+	var sanitized bytes.Buffer
+	if err := bluemonday.UGCPolicy().SanitizeReaderToWriter(h.r, &sanitized); err != nil {
+		return nil, err
+	}
+	doc, err := goquery.NewDocumentFromReader(&sanitized)
 	if err != nil {
 		return nil, err
 	}
@@ -37,8 +42,7 @@ func (h HTML) Load(_ context.Context) ([]schema.Document, error) {
 		sel = doc.Contents()
 	}
 
-	sanitized := bluemonday.UGCPolicy().Sanitize(sel.Text())
-	pagecontent := strings.TrimSpace(sanitized)
+	pagecontent := strings.TrimSpace(sel.Text())
 
 	return []schema.Document{
 		{
